@@ -11,8 +11,7 @@ Are you tired of tediously typing file paths while coding? Say goodbye to manual
 
 ### Teaser 👁️
 
-<video autoplay="true" loop="true" height="150" controls width="300" poster="">
-    <source src="https://github.com/bajrangCoder/PathIntellisense/assets/71929976/273e63ce-5820-4c22-a724-32e4a1f56628" type="video/mp4"></source>
+<video autoplay="true" loop="true" height="150" controls width="300" poster="https://cdn.jsdelivr.net/gh/bajrangCoder/PathIntellisense@main/icon.png" src="https://github.com/bajrangCoder/PathIntellisense/assets/71929976/273e63ce-5820-4c22-a724-32e4a1f56628" type="video/mp4">
 </video>
 
 ## Feature Requests 🙏
