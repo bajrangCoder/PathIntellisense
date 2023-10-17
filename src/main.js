@@ -73,7 +73,6 @@ class PathIntellisense {
     async fetchDirectoryContents(path, callback, isNormal) {
         try {
             const cachedData = await this.directoryCache.getAsync(path);
-
             if (cachedData) {
                 callback(null, cachedData);
                 return;
@@ -81,14 +80,13 @@ class PathIntellisense {
 
             const list = await fsOperation(path).lsDir();
             const suggestions = list.map(function (item) {
+                let icon_name = helpers.getIconForFile(item.name);
                 return {
                     caption: item.name,
                     value: item.name,
                     score: isNormal ? 500 : 8000,
                     meta: item.isFile ? "File" : "Folder",
-                    icon: item.isFile
-                        ? `${helpers.getIconForFile(item.name)}`
-                        : "icon folder"
+                    icon: item.isFile ? `${icon_name}` : "icon folder"
                 };
             });
             // Cache the directory contents for future use
@@ -121,44 +119,32 @@ class PathIntellisense {
         const basePathParts = basePath.split("::");
         if (basePathParts.length === 2) {
             const baseUri = basePathParts[0];
-            const baseDir = basePathParts[1];
+            let baseDir = basePathParts[1];
+
+            // Ensure baseDir ends with "/"
+            if (!baseDir.endsWith("/")) {
+                baseDir += "/";
+            }
+
             const relativeParts = relativePath.split("/");
-
-            let newDir = baseDir.split("/").filter(Boolean);
-
-            // Set a limit for the base directory path
-            const limitPath = "data/data/com.termux/files/home";
 
             for (const part of relativeParts) {
                 if (part === "..") {
-                    // Move up one directory, but avoid going above the root and limitPath
-                    if (newDir.length > 1 && newDir.join("/") !== limitPath) {
-                        newDir.pop();
+                    // Move up one directory, but avoid going above the root
+                    const lastSlashIndex = baseDir.lastIndexOf(
+                        "/",
+                        baseDir.length - 2
+                    );
+                    if (lastSlashIndex !== -1) {
+                        baseDir = baseDir.substring(0, lastSlashIndex + 1);
                     }
-                } else if (
-                    part !== "." &&
-                    part !== "" &&
-                    newDir.join("/") !== limitPath
-                ) {
-                    // Ignore '.' (current directory) and empty parts
-                    newDir.push(part);
-                } else if (
-                    part !== "." &&
-                    part !== "" &&
-                    part !== ".." &&
-                    newDir.join("/") === limitPath
-                ) {
-                    // If in the limitPath and encountering a directory, move into that directory
-                    newDir.push(part);
+                } else if (part !== "." && part !== "") {
+                    baseDir += part + "/";
                 }
             }
 
-            const newDirPath = newDir.join("/");
-            const resolvedPath =
-                newDirPath !== limitPath
-                    ? baseUri + "::/" + newDirPath
-                    : baseUri + "::/" + newDirPath;
-            return resolvedPath + "/";
+            const resolvedPath = baseUri + "::" + baseDir;
+            return resolvedPath;
         }
 
         // Return the basePath unmodified if it doesn't match the expected format
