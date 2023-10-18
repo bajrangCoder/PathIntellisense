@@ -2,7 +2,6 @@ import plugin from "../plugin.json";
 import LRUCache from "./cache.js";
 
 const fsOperation = acode.require("fsOperation");
-const helpers = acode.require("helpers");
 
 const { editor } = editorManager;
 
@@ -72,7 +71,9 @@ class PathIntellisense {
 
     async fetchDirectoryContents(path, callback, isNormal) {
         try {
+            const helpers = acode.require("helpers");
             const cachedData = await this.directoryCache.getAsync(path);
+
             if (cachedData) {
                 callback(null, cachedData);
                 return;
@@ -80,15 +81,21 @@ class PathIntellisense {
 
             const list = await fsOperation(path).lsDir();
             const suggestions = list.map(function (item) {
-                const { isFile, name } = item;
-                const icon_name = helpers.getIconForFile(name);
-                return {
-                    caption: name,
-                    value: isFile ? name : name+"/",
+                const completion = {
+                    caption: item.name,
+                    value: item.name,
                     score: isNormal ? 500 : 8000,
-                    meta: isFile ? "File" : "Folder",
-                    icon: isFile ? `${icon_name}` : "icon folder"
+                    meta: item.isFile ? "File" : "Folder"
                 };
+                if (extraSyntaxHighlightsInstalled) {
+                    completion.icon = item.isFile
+                        ? helpers.getIconForFile(item.name)
+                        : "icon folder";
+                }
+                if (!item.isFile) {
+                    completion.value += "/";
+                }
+                return completion;
             });
             // Cache the directory contents for future use
             await this.directoryCache.setAsync(path, suggestions);
