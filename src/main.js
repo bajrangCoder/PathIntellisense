@@ -80,13 +80,14 @@ class PathIntellisense {
 
             const list = await fsOperation(path).lsDir();
             const suggestions = list.map(function (item) {
-                let icon_name = helpers.getIconForFile(item.name);
+                const { isFile, name } = item;
+                const icon_name = helpers.getIconForFile(name);
                 return {
-                    caption: item.name,
-                    value: item.name,
+                    caption: name,
+                    value: isFile ? name : name+"/",
                     score: isNormal ? 500 : 8000,
-                    meta: item.isFile ? "File" : "Folder",
-                    icon: item.isFile ? `${icon_name}` : "icon folder"
+                    meta: isFile ? "File" : "Folder",
+                    icon: isFile ? `${icon_name}` : "icon folder"
                 };
             });
             // Cache the directory contents for future use
