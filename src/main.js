@@ -63,7 +63,7 @@ class PathIntellisense {
             }
         });
         editor.commands.on("afterExec", function (e) {
-            if (e.command.name === "insertstring" && e.args === "/") {
+            if (e.command.name === "insertstring" && (e.args === "/" || e.args.endsWith("/"))) {
                 editor.execCommand("startAutocomplete");
             }
         });
@@ -100,7 +100,6 @@ class PathIntellisense {
             // Cache the directory contents for future use
             await this.directoryCache.setAsync(path, suggestions);
 
-            // Call the callback function with the suggestions
             callback(null, suggestions);
         } catch (err) {
             callback(null, []);
