@@ -2,7 +2,7 @@
 
 Are you tired of tediously typing file paths while coding? Say goodbye to manual path input and welcome the `Path Intellisense` plugin for Acode Editor! This Powerful is designed to make your coding experience smoother, faster, and more enjoyable.
 
-> Plugin size: 2.7kb(excluding icon.png)
+> Plugin size: 3.4kb(excluding icon.png)
 
 ## Features 🤩
 
@@ -10,11 +10,17 @@ Are you tired of tediously typing file paths while coding? Say goodbye to manual
 - **Supports Relative Paths**: support for relative paths, including nested relative paths like `../folder1/folder2`.
 - **Nested Relative Paths Handling**: Seamlessly handle nested relative paths such as `../../folder/nestedFolder`.
 - **Caching Mechanism**: Optimize performance with a caching system to store and retrieve directory suggestions, reducing redundant filesystem operations.
+- **Supports Prefix**: like: `$HOME`
+
+### Clear Cache
+
+Clear cache using `Ctrl-Shift-I` or from command palette(by searching: "Reset PathIntellisense Cache") or Restart App, in case you have done any modifications with files and folders to show updated suggestions
 
 ### Teaser 👁️
 
 <video autoplay="true" loop="true" height="150" controls width="300" poster="https://cdn.jsdelivr.net/gh/bajrangCoder/PathIntellisense@main/icon.png" src="https://github.com/bajrangCoder/PathIntellisense/assets/71929976/273e63ce-5820-4c22-a724-32e4a1f56628" type="video/mp4">
 </video>
+
 
 ## Feature Requests 🙏
 

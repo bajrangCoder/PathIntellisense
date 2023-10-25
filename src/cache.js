@@ -25,6 +25,11 @@ class LRUCache {
         this.cache.set(key, value);
         this.accessOrder.unshift(key);
     }
+    
+    resetCache() {
+        this.cache.clear();
+        this.accessOrder = [];
+    }
 }
 
 export default LRUCache;

@@ -1,6 +1,6 @@
 {
   "name": "PathIntellisense",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "A path autocompletion plugin for Acode",
   "main": "dist/main.js",
   "scripts": {

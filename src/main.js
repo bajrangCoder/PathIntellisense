@@ -12,6 +12,12 @@ class PathIntellisense {
 
     async init() {
         const self = this;
+        editorManager.editor.commands.addCommand({
+            name: "pathintellisense:reset_cache",
+            description: "Reset PathIntellisense Cache",
+            bindKey: { win: "Ctrl-Shift-I" },
+            exec: this.clearCache.bind(this)
+        });
         editor.completers.push({
             getCompletions: async function (
                 editor,
@@ -23,6 +29,26 @@ class PathIntellisense {
                 const currentLine = session.getLine(pos.row);
                 let input = self.getCurrentInput(currentLine, pos.column);
                 if (!editorManager.activeFile.uri) return;
+
+                const absolutePaths = {
+                    "$HOME/":
+                        "content://com.termux.documents/tree/%2Fdata%2Fdata%2Fcom.termux%2Ffiles%2Fhome::/data/data/com.termux/files/home/"
+                };
+
+                for (const prefix in absolutePaths) {
+                    if (input.startsWith(prefix)) {
+                        // Check if the input contains a folder name after the prefix
+                        const folderPath = input.substring(prefix.length);
+                        const fullPath = absolutePaths[prefix] + folderPath || "";
+                        await self.fetchDirectoryContents(
+                            fullPath,
+                            callback,
+                            false
+                        );
+                        return;
+                    }
+                }
+
                 let currentDirectory = self.removeFileNameAndExtension(
                     editorManager.activeFile.uri
                 );
@@ -63,10 +89,18 @@ class PathIntellisense {
             }
         });
         editor.commands.on("afterExec", function (e) {
-            if (e.command.name === "insertstring" && (e.args === "/" || e.args.endsWith("/"))) {
+            if (
+                e.command.name === "insertstring" &&
+                (e.args === "/" || e.args.endsWith("/"))
+            ) {
                 editor.execCommand("startAutocomplete");
             }
         });
+    }
+
+    clearCache() {
+        this.directoryCache.resetCache();
+        window.toast("Cache Cleared 🔥", 2000);
     }
 
     async fetchDirectoryContents(path, callback, isNormal) {
@@ -110,7 +144,7 @@ class PathIntellisense {
     getCurrentInput(line, column) {
         let input = "";
         let i = column - 1;
-        while (i >= 0 && /[a-zA-Z0-9/.+_\-\s]/.test(line[i])) {
+        while (i >= 0 && /[a-zA-Z0-9/.+_\-\s$\:]/.test(line[i])) {
             input = line[i] + input;
             i--;
         }
@@ -164,7 +198,11 @@ class PathIntellisense {
         return filePath.substring(0, filePath.length - fileName.length - 1);
     }
 
-    async destroy() {}
+    async destroy() {
+        editorManager.editor.commands.removeCommand(
+            "pathintellisense:reset_cache"
+        );
+    }
 }
 
 if (window.acode) {
