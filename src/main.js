@@ -45,7 +45,6 @@ class PathIntellisense {
                             callback,
                             false
                         );
-                        return;
                     }
                 }
 
