@@ -30,28 +30,23 @@ class PathIntellisense {
                 let input = self.getCurrentInput(currentLine, pos.column);
                 if (!editorManager.activeFile.uri) return;
 
-                const absolutePaths = {
-                    "$HOME/":
-                        "content://com.termux.documents/tree/%2Fdata%2Fdata%2Fcom.termux%2Ffiles%2Fhome::/data/data/com.termux/files/home/"
-                };
-
-                for (const prefix in absolutePaths) {
-                    if (input.startsWith(prefix)) {
-                        // Check if the input contains a folder name after the prefix
-                        const folderPath = input.substring(prefix.length);
-                        const fullPath = absolutePaths[prefix] + folderPath || "";
-                        await self.fetchDirectoryContents(
-                            fullPath,
-                            callback,
-                            false
-                        );
-                    }
-                }
+                const absolutePath = "$HOME/";
 
                 let currentDirectory = self.removeFileNameAndExtension(
                     editorManager.activeFile.uri
                 );
-                if (input.startsWith("/")) {
+                if (input.startsWith(absolutePath)) {
+                    // Check if the input contains a folder name after the prefix
+                    const folderPath = input.substring(absolutePath.length);
+                    const fullPath =
+                        "content://com.termux.documents/tree/%2Fdata%2Fdata%2Fcom.termux%2Ffiles%2Fhome::/data/data/com.termux/files/home/" +
+                            folderPath || "";
+                    await self.fetchDirectoryContents(
+                        fullPath,
+                        callback,
+                        false
+                    );
+                } else if (input.startsWith("/")) {
                     const basePath = currentDirectory;
                     const fullPath = self.resolveRelativePath(basePath, input);
                     await self.fetchDirectoryContents(
