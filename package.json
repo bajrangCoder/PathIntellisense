@@ -12,5 +12,8 @@
   "devDependencies": {
     "esbuild": "^0.19.3",
     "jszip": "^3.10.1"
+  },
+  "dependencies": {
+    "@types/ace": "^0.0.51"
   }
 }

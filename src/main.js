@@ -12,13 +12,13 @@ class PathIntellisense {
 
     async init() {
         const self = this;
-        editorManager.editor.commands.addCommand({
+        editor.commands.addCommand({
             name: "pathintellisense:reset_cache",
             description: "Reset PathIntellisense Cache",
             bindKey: { win: "Ctrl-Shift-I" },
             exec: this.clearCache.bind(this)
         });
-        editor.completers.push({
+        this.pathAutoCompletions = {
             getCompletions: async function (
                 editor,
                 session,
@@ -81,7 +81,8 @@ class PathIntellisense {
                     );
                 }
             }
-        });
+        };
+        editor.completers.unshift(this.pathAutoCompletions);
         editor.commands.on("afterExec", function (e) {
             if (
                 e.command.name === "insertstring" &&
@@ -193,7 +194,8 @@ class PathIntellisense {
     }
 
     async destroy() {
-        editorManager.editor.commands.removeCommand(
+        editor.completers.splice(editor.completers.indexOf(thieditorManagers.pathAutoCompletions), 1);
+        editor.commands.removeCommand(
             "pathintellisense:reset_cache"
         );
     }
