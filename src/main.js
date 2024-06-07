@@ -139,7 +139,7 @@ class PathIntellisense {
     getCurrentInput(line, column) {
         let input = "";
         let i = column - 1;
-        while (i >= 0 && /[a-zA-Z0-9/.+_\-\s$\:]/.test(line[i])) {
+        while (i >= 0 && /[a-zA-Z0-9/.+_\-\s$@\:]/.test(line[i])) {
             input = line[i] + input;
             i--;
         }
