@@ -102,13 +102,13 @@ class PathIntellisense {
         try {
             const helpers = acode.require("helpers");
             const cachedData = await this.directoryCache.getAsync(path);
-
+            
             if (cachedData) {
                 callback(null, cachedData);
                 return;
             }
 
-            const list = await fsOperation(path).lsDir();
+            const list = await acode.require("fsOperation")(path).lsDir();
             const suggestions = list.map(function (item) {
                 const completion = {
                     caption: item.name,
@@ -194,7 +194,7 @@ class PathIntellisense {
     }
 
     async destroy() {
-        editor.completers.splice(editor.completers.indexOf(thieditorManagers.pathAutoCompletions), 1);
+        editor.completers.splice(editor.completers.indexOf(this.pathAutoCompletions), 1);
         editor.commands.removeCommand(
             "pathintellisense:reset_cache"
         );
