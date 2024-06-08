@@ -2,7 +2,7 @@
 
 Are you tired of tediously typing file paths while coding? Say goodbye to manual path input and welcome the `Path Intellisense` plugin for Acode Editor! This Powerful is designed to make your coding experience smoother, faster, and more enjoyable.
 
-> Plugin size: 3.4kb(excluding icon.png)
+> Plugin size: 3.5kb(excluding icon.png)
 
 ## Features 🤩
 

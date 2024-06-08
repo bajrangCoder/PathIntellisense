@@ -116,7 +116,7 @@ class PathIntellisense {
                     score: isNormal ? 500 : 8000,
                     meta: item.isFile ? "File" : "Folder"
                 };
-                if (extraSyntaxHighlightsInstalled) {
+                if (typeof extraSyntaxHighlightsInstalled !== 'undefined' && extraSyntaxHighlightsInstalled) {
                     completion.icon = item.isFile
                         ? helpers.getIconForFile(item.name)
                         : "icon folder";
@@ -132,7 +132,8 @@ class PathIntellisense {
             callback(null, suggestions);
         } catch (err) {
             callback(null, []);
-            console.log(err);
+            window.toast("PathIntellisense Error: "+err.message, 3000);
+            console.log(err.message);
         }
     }
 
