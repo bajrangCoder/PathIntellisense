@@ -15,7 +15,6 @@ class PathIntellisense {
         editor.commands.addCommand({
             name: "pathintellisense:reset_cache",
             description: "Reset PathIntellisense Cache",
-            bindKey: { win: "Ctrl-Shift-I" },
             exec: this.clearCache.bind(this)
         });
         this.pathAutoCompletions = {
@@ -132,7 +131,6 @@ class PathIntellisense {
             callback(null, suggestions);
         } catch (err) {
             callback(null, []);
-            window.toast("PathIntellisense Error: "+err.message, 3000);
             console.log(err.message);
         }
     }

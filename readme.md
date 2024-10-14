@@ -14,7 +14,7 @@ Are you tired of tediously typing file paths while coding? Say goodbye to manual
 
 ### Clear Cache
 
-Clear cache using `Ctrl-Shift-I` or from command palette(by searching: "Reset PathIntellisense Cache") or Restart App, in case you have done any modifications with files and folders to show updated suggestions
+Clear cache from command palette(by searching: "Reset PathIntellisense Cache") or Restart App, in case you have done any modifications with files and folders to show updated suggestions
 
 ### Teaser 👁️
 
