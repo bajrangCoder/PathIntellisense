@@ -3,7 +3,8 @@ import type {
 	CompletionContext,
 	CompletionResult,
 } from "@codemirror/autocomplete";
-import type { Extension } from "@codemirror/state";
+import type { EditorState, Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import plugin from "../plugin.json";
 import LRUCache from "./cache";
 
@@ -49,10 +50,17 @@ type AceEditor = Ace.Editor & {
 	};
 };
 
-type CodeMirrorView = Acode.EditorLike & {
-	contentDOM?: HTMLElement;
-	execCommand?: (name: string) => boolean;
-	setState?: (state: unknown) => void;
+type CodeMirrorView = Acode.EditorLike & EditorView;
+
+type CodeMirrorModules = Pick<
+	Acode.CodeMirrorNamespace,
+	"autocomplete" | "state" | "view"
+>;
+
+type CodeMirrorCompartment = {
+	of(extension: Extension): Extension;
+	reconfigure(extension: Extension): unknown;
+	get(state: EditorState): Extension | undefined;
 };
 
 type AceAfterExecEvent = {
@@ -68,10 +76,11 @@ class PathIntellisense {
 	private pathAutoCompletions: AceCompleter | null = null;
 	private aceAfterExecHandler: ((event: AceAfterExecEvent) => void) | null =
 		null;
-	private codeMirrorInputHandler: ((event: Event) => void) | null = null;
 	private codeMirrorSwitchHandler: (() => void) | null = null;
-	private installedViews = new WeakSet<object>();
+	private codeMirrorViews = new Set<CodeMirrorView>();
+	private codeMirrorCompartment: CodeMirrorCompartment | null = null;
 	private codeMirrorAutocompleteExtension: Extension | null = null;
+	private codeMirrorEnabled = false;
 
 	async init(): Promise<void> {
 		const editor = editorManager.editor;
@@ -80,7 +89,7 @@ class PathIntellisense {
 		this.registerResetCommand(editor);
 
 		if (editorManager.isCodeMirror === true) {
-			this.initCodeMirror(editor as CodeMirrorView);
+			this.initCodeMirror(editor as unknown as CodeMirrorView);
 			return;
 		}
 
@@ -142,25 +151,41 @@ class PathIntellisense {
 	}
 
 	private initCodeMirror(editor: CodeMirrorView): void {
-		this.installCodeMirrorCompletionSource();
+		this.codeMirrorEnabled = true;
+		const existingViews = new Set<CodeMirrorView>([editor]);
+		for (const pane of editorManager.panes ?? []) {
+			if (pane.editor) {
+				existingViews.add(pane.editor as unknown as CodeMirrorView);
+			}
+		}
+		for (const view of existingViews) {
+			this.installCodeMirrorCompletionSource(view);
+		}
+
 		this.codeMirrorSwitchHandler = () => {
-			this.installCodeMirrorCompletionSource();
+			queueMicrotask(() => {
+				if (!this.codeMirrorEnabled) return;
+				const activeEditor = editorManager.editor as unknown as
+					| CodeMirrorView
+					| undefined;
+				if (activeEditor) this.installCodeMirrorCompletionSource(activeEditor);
+			});
 		};
 		editorManager.on("switch-file", this.codeMirrorSwitchHandler);
-
-		this.codeMirrorInputHandler = (event) => {
-			const data = (event as InputEvent).data;
-			if (typeof data !== "string") return;
-			if (data !== "/" && !data.endsWith("/")) return;
-			this.triggerCodeMirrorAutocomplete();
-		};
-		editor.contentDOM?.addEventListener("input", this.codeMirrorInputHandler);
 	}
 
-	private getCodeMirror(): Acode.CodeMirrorNamespace | null {
-		const cm = acode.require("codemirror");
-		if (cm?.autocomplete && cm?.state) return cm;
-		return null;
+	private getCodeMirror(): CodeMirrorModules | null {
+		const bundled = acode.require("codemirror");
+		const autocomplete =
+			bundled?.autocomplete ?? acode.require("@codemirror/autocomplete");
+		const state = bundled?.state ?? acode.require("@codemirror/state");
+		const view = bundled?.view ?? acode.require("@codemirror/view");
+
+		if (!autocomplete?.autocompletion || !state?.StateEffect || !view?.EditorView) {
+			return null;
+		}
+
+		return { autocomplete, state, view };
 	}
 
 	private getOrCreateAutocompleteExtension(): Extension | null {
@@ -168,140 +193,69 @@ class PathIntellisense {
 			return this.codeMirrorAutocompleteExtension;
 		}
 
-		const completionSource = this.getCodeMirrorCompletions.bind(this);
 		const cm = this.getCodeMirror();
-		if (cm?.state.EditorState.languageData) {
-			this.codeMirrorAutocompleteExtension = cm.state.EditorState.languageData.of(
-				() => [{ autocomplete: completionSource }],
-			);
-			return this.codeMirrorAutocompleteExtension;
-		}
+		if (!cm?.state.EditorState.languageData) return null;
 
-		const editor = editorManager.editor as CodeMirrorView | undefined;
-		const EditorStateClass = editor?.state?.constructor as
-			| {
-					languageData?: { of: (value: unknown) => unknown };
-			  }
-			| undefined;
-		if (!EditorStateClass?.languageData?.of) return null;
+		const completionSource = this.getCodeMirrorCompletions.bind(this);
+		const pathCompletionData = cm.state.EditorState.languageData.of(() => [
+			{ autocomplete: completionSource },
+		]);
+		const restartAfterSlash = cm.view.EditorView.updateListener.of((update) => {
+			if (!update.docChanged) return;
 
-		this.codeMirrorAutocompleteExtension = EditorStateClass.languageData.of(
-			() => [{ autocomplete: completionSource }],
-		) as Extension;
+			const cursor = update.state.selection.main.head;
+			if (cursor === 0 || update.state.sliceDoc(cursor - 1, cursor) !== "/") {
+				return;
+			}
+
+			queueMicrotask(() => {
+				cm.autocomplete.startCompletion(update.view);
+			});
+		});
+
+		// `autocompletion()` installs the state field, tooltip, and official keymap.
+		// Language data adds this source without replacing completions from the
+		// active language package.
+		this.codeMirrorAutocompleteExtension = [
+			cm.autocomplete.autocompletion(),
+			pathCompletionData,
+			restartAfterSlash,
+		];
 		return this.codeMirrorAutocompleteExtension;
 	}
 
-	private appendCodeMirrorExtension(
-		editor: CodeMirrorView,
-		extension: Extension,
-	): boolean {
+	private getOrCreateCodeMirrorCompartment(): CodeMirrorCompartment | null {
+		if (this.codeMirrorCompartment) return this.codeMirrorCompartment;
+
 		const cm = this.getCodeMirror();
-		if (cm?.state.StateEffect.appendConfig) {
-			editor.dispatch({
-				effects: cm.state.StateEffect.appendConfig.of(extension),
-			});
-			return true;
-		}
+		if (!cm?.state.Compartment) return null;
 
-		const appendConfig = (
-			editorManager as Acode.EditorManager & {
-				readOnlyCompartment?: {
-					reconfigure: (value: unknown) => {
-						constructor?: { appendConfig?: { of: (value: unknown) => unknown } };
-					};
-				};
-			}
-		).readOnlyCompartment?.reconfigure([])?.constructor?.appendConfig;
-
-		if (appendConfig?.of) {
-			editor.dispatch({
-				effects: appendConfig.of(extension),
-			});
-			return true;
-		}
-
-		const EditorStateClass = editor.state?.constructor as
-			| {
-					create?: (config: {
-						doc: unknown;
-						selection: unknown;
-						extensions: unknown[];
-					}) => unknown;
-			  }
-			| undefined;
-		if (!EditorStateClass?.create || !editor.setState) return false;
-
-		const state = editor.state as Acode.CodeMirrorEditorState & {
-			config?: { base?: unknown[] };
-		};
-		const baseExtensions = Array.isArray(state.config?.base)
-			? state.config.base.slice()
-			: [];
-		baseExtensions.push(extension);
-		editor.setState(
-			EditorStateClass.create({
-				doc: state.doc,
-				selection: state.selection,
-				extensions: baseExtensions,
-			}),
-		);
-		return true;
+		this.codeMirrorCompartment = new cm.state.Compartment();
+		return this.codeMirrorCompartment;
 	}
 
-	private installCodeMirrorCompletionSource(): void {
-		const editor = editorManager.editor as CodeMirrorView | undefined;
-		if (!editor || this.installedViews.has(editor)) return;
+	private installCodeMirrorCompletionSource(editor: CodeMirrorView): void {
+		if (!this.codeMirrorEnabled) return;
 
 		const extension = this.getOrCreateAutocompleteExtension();
-		if (!extension) return;
-
-		if (this.appendCodeMirrorExtension(editor, extension)) {
-			this.installedViews.add(editor);
-		}
-	}
-
-	private triggerCodeMirrorAutocomplete(): void {
-		const editor = editorManager.editor as CodeMirrorView | undefined;
-		if (!editor) return;
-
+		const compartment = this.getOrCreateCodeMirrorCompartment();
 		const cm = this.getCodeMirror();
-		if (cm?.autocomplete.startCompletion) {
-			cm.autocomplete.startCompletion(editor as never);
+		if (!extension || !compartment || !cm) return;
+
+		// Acode may replace the state while keeping the same EditorView. Checking
+		// the compartment in the current state is therefore safer than remembering
+		// the view or file ID.
+		if (compartment.get(editor.state) !== undefined) {
+			this.codeMirrorViews.add(editor);
 			return;
 		}
 
-		const commandNames = ["startAutocomplete", "startCompletion", "autocomplete"];
-		for (const commandName of commandNames) {
-			try {
-				if (editor.execCommand?.(commandName)) return;
-			} catch {
-				// Keep trying fallbacks.
-			}
-		}
-
-		const dispatchCtrlSpace = (metaKey: boolean) => {
-			const keydown = new KeyboardEvent("keydown", {
-				key: " ",
-				code: "Space",
-				ctrlKey: !metaKey,
-				metaKey,
-				bubbles: true,
-				cancelable: true,
-			});
-			editor.contentDOM?.dispatchEvent(keydown);
-			const keyup = new KeyboardEvent("keyup", {
-				key: " ",
-				code: "Space",
-				ctrlKey: !metaKey,
-				metaKey,
-				bubbles: true,
-				cancelable: true,
-			});
-			editor.contentDOM?.dispatchEvent(keyup);
-		};
-
-		dispatchCtrlSpace(false);
-		dispatchCtrlSpace(true);
+		editor.dispatch({
+			effects: cm.state.StateEffect.appendConfig.of(
+				compartment.of(extension),
+			),
+		});
+		this.codeMirrorViews.add(editor);
 	}
 
 	private async getCodeMirrorCompletions(
@@ -310,7 +264,7 @@ class PathIntellisense {
 		const fileUri = editorManager.activeFile?.uri;
 		if (!fileUri) return null;
 
-		const word = context.matchBefore(/[a-zA-Z0-9/.+_\-$@:]*/);
+		const word = context.matchBefore(/[a-zA-Z0-9/.+_\-$@:%]*/);
 		if (!word) return null;
 		if (word.from === word.to && !context.explicit) return null;
 
@@ -321,13 +275,15 @@ class PathIntellisense {
 		if (!resolved) return null;
 
 		const entries = await this.getDirectoryEntries(resolved.path);
+		if (context.aborted) return null;
+
 		const options = this.toCodeMirrorCompletions(entries);
 		if (!options.length) return null;
 
 		return {
 			from: word.to - query.segmentPrefix.length,
 			options,
-			validFor: /[a-zA-Z0-9.+_\-\s$@:]*$/,
+			validFor: /^[a-zA-Z0-9.+_\-\s$@:%]*$/,
 		};
 	}
 
@@ -460,8 +416,9 @@ class PathIntellisense {
 	private toCodeMirrorCompletions(entries: DirectoryEntry[]): Completion[] {
 		return entries.map((item) => ({
 			label: item.isFile ? item.name : `${item.name}/`,
-			type: item.isFile ? "property" : "keyword",
+			type: item.isFile ? "text" : "namespace",
 			detail: item.isFile ? "File" : "Folder",
+			boost: item.isFile ? 0 : 10,
 		}));
 	}
 
@@ -522,15 +479,23 @@ class PathIntellisense {
 		}
 
 		if (editorManager.isCodeMirror === true) {
-			if (this.codeMirrorInputHandler) {
-				editor.contentDOM?.removeEventListener(
-					"input",
-					this.codeMirrorInputHandler,
-				);
-			}
+			this.codeMirrorEnabled = false;
 			if (this.codeMirrorSwitchHandler) {
 				editorManager.off("switch-file", this.codeMirrorSwitchHandler);
 			}
+
+			const compartment = this.codeMirrorCompartment;
+			if (compartment) {
+				for (const view of this.codeMirrorViews) {
+					try {
+						if (compartment.get(view.state) === undefined) continue;
+						view.dispatch({ effects: compartment.reconfigure([]) });
+					} catch {
+						// Closed panes may hold a destroyed EditorView.
+					}
+				}
+			}
+			this.codeMirrorViews.clear();
 			return;
 		}
 
