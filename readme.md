@@ -2,8 +2,6 @@
 
 Are you tired of tediously typing file paths while coding? Say goodbye to manual path input and welcome the `Path Intellisense` plugin for Acode Editor! This Powerful is designed to make your coding experience smoother, faster, and more enjoyable.
 
-> Plugin size: ~8kb (excluding icon.png)
-
 ## Development
 
 ```sh
@@ -13,8 +11,6 @@ bun run build    # typecheck + production zip
 bun run typecheck
 ```
 
-In Acode, install from **Plugins → Remote** using `http://<your-ip>:3000/plugin.zip`.
-
 ## Features 🤩
 
 - **Powerful Autocompletion**: Experience a robust autocompletion feature that understands and suggests file and folder paths as you type.
@@ -22,7 +18,7 @@ In Acode, install from **Plugins → Remote** using `http://<your-ip>:3000/plugi
 - **Nested Relative Paths Handling**: Seamlessly handle nested relative paths such as `../../folder/nestedFolder`.
 - **Caching Mechanism**: Optimize performance with a caching system to store and retrieve directory suggestions, reducing redundant filesystem operations.
 - **Supports Prefix**: like: `$HOME`
-- Supports codemirror 
+- Supports codemirror and codemirror syntax tree awareness
 
 ### Clear Cache
 
@@ -52,9 +48,6 @@ Contribute to the improvement of the Path Intellisense plugin by submitting your
 
 [Contribute to Path Intellisense](https://github.com/bajrangCoder/PathIntellisense/pulls)
 
-## Bonus Points 💥
-
-Use **Extra Syntax Highlighting 2.0** plugin with **PathIntellisense** to get icons and visuals in your autocompletion box 
 
 > [Leave a ⭐ on GitHub](https://github.com/bajrangCoder/PathIntellisense/)
 
