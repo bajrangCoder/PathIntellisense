@@ -5,6 +5,8 @@ import type {
 } from "@codemirror/autocomplete";
 import type { EditorState, Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
+import type * as LezerHighlight from "@lezer/highlight";
 import plugin from "../plugin.json";
 import LRUCache from "./cache";
 
@@ -52,10 +54,13 @@ type AceEditor = Ace.Editor & {
 
 type CodeMirrorView = Acode.EditorLike & EditorView;
 
-type CodeMirrorModules = Pick<
-	Acode.CodeMirrorNamespace,
-	"autocomplete" | "state" | "view"
->;
+type CodeMirrorModules = {
+	autocomplete: Acode.CodeMirrorNamespace["autocomplete"];
+	language: Acode.CodeMirrorNamespace["language"];
+	state: Acode.CodeMirrorNamespace["state"];
+	view: Acode.CodeMirrorNamespace["view"];
+	lezerHighlight: typeof LezerHighlight;
+};
 
 type CodeMirrorCompartment = {
 	of(extension: Extension): Extension;
@@ -178,14 +183,26 @@ class PathIntellisense {
 		const bundled = acode.require("codemirror");
 		const autocomplete =
 			bundled?.autocomplete ?? acode.require("@codemirror/autocomplete");
+		const language =
+			bundled?.language ?? acode.require("@codemirror/language");
 		const state = bundled?.state ?? acode.require("@codemirror/state");
 		const view = bundled?.view ?? acode.require("@codemirror/view");
+		const lezerHighlight =
+			bundled?.lezer?.highlight ??
+			bundled?.lezer ??
+			acode.require("@lezer/highlight");
 
-		if (!autocomplete?.autocompletion || !state?.StateEffect || !view?.EditorView) {
+		if (
+			!autocomplete?.autocompletion ||
+			!language?.syntaxTree ||
+			!state?.StateEffect ||
+			!view?.EditorView ||
+			!lezerHighlight?.getStyleTags
+		) {
 			return null;
 		}
 
-		return { autocomplete, state, view };
+		return { autocomplete, language, state, view, lezerHighlight };
 	}
 
 	private getOrCreateAutocompleteExtension(): Extension | null {
@@ -200,26 +217,45 @@ class PathIntellisense {
 		const pathCompletionData = cm.state.EditorState.languageData.of(() => [
 			{ autocomplete: completionSource },
 		]);
-		const restartAfterSlash = cm.view.EditorView.updateListener.of((update) => {
-			if (!update.docChanged) return;
+		const restartAfterTypedSlash = cm.view.EditorView.updateListener.of(
+			(update) => {
+				if (!update.docChanged) return;
 
-			const cursor = update.state.selection.main.head;
-			if (cursor === 0 || update.state.sliceDoc(cursor - 1, cursor) !== "/") {
-				return;
-			}
+				// Folder picks are continued by activateOnCompletion below. Starting
+				// here too would create overlapping completion sessions.
+				const pickedCompletion = update.transactions.some((transaction) =>
+					transaction.annotation(cm.autocomplete.pickedCompletion),
+				);
+				if (pickedCompletion) return;
 
-			queueMicrotask(() => {
-				cm.autocomplete.startCompletion(update.view);
-			});
-		});
+				const cursor = update.state.selection.main.head;
+				if (
+					cursor === 0 ||
+					update.state.sliceDoc(cursor - 1, cursor) !== "/" ||
+					this.isInCodeMirrorComment(update.state, cursor, cm)
+				) {
+					return;
+				}
+
+				queueMicrotask(() => {
+					if (this.codeMirrorEnabled) {
+						cm.autocomplete.startCompletion(update.view);
+					}
+				});
+			},
+		);
 
 		// `autocompletion()` installs the state field, tooltip, and official keymap.
 		// Language data adds this source without replacing completions from the
-		// active language package.
+		// active language package. `activateOnCompletion` is CodeMirror's native
+		// mechanism for continuing from one completed path segment to the next.
 		this.codeMirrorAutocompleteExtension = [
-			cm.autocomplete.autocompletion(),
+			cm.autocomplete.autocompletion({
+				activateOnCompletion: (completion) =>
+					completion.type === "namespace" && completion.detail === "Folder",
+			}),
 			pathCompletionData,
-			restartAfterSlash,
+			restartAfterTypedSlash,
 		];
 		return this.codeMirrorAutocompleteExtension;
 	}
@@ -264,6 +300,11 @@ class PathIntellisense {
 		const fileUri = editorManager.activeFile?.uri;
 		if (!fileUri) return null;
 
+		const cm = this.getCodeMirror();
+		if (!cm || this.isInCodeMirrorComment(context.state, context.pos, cm)) {
+			return null;
+		}
+
 		const word = context.matchBefore(/[a-zA-Z0-9/.+_\-$@:%]*/);
 		if (!word) return null;
 		if (word.from === word.to && !context.explicit) return null;
@@ -282,9 +323,45 @@ class PathIntellisense {
 
 		return {
 			from: word.to - query.segmentPrefix.length,
+			to: context.pos,
 			options,
-			validFor: /^[a-zA-Z0-9.+_\-\s$@:%]*$/,
+			// Android IMEs may update an in-progress word through composition
+			// transactions. Explicitly move `to` to the live cursor so CodeMirror
+			// scores against the whole segment ("breadcr"), not its first committed
+			// character ("b"). Reuse the directory listing while the cursor stays
+			// within the same path segment.
+			update: (current, from, _to, nextContext) => {
+				if (nextContext.pos < from) return null;
+				const segment = nextContext.state.sliceDoc(from, nextContext.pos);
+				if (!/^[a-zA-Z0-9.+_\-\s$@:%]*$/.test(segment)) return null;
+
+				return {
+					...current,
+					from,
+					to: nextContext.pos,
+				};
+			},
 		};
+	}
+
+	private isInCodeMirrorComment(
+		state: EditorState,
+		pos: number,
+		cm: CodeMirrorModules,
+	): boolean {
+		let node: SyntaxNode | null = cm.language
+			.syntaxTree(state)
+			.resolveInner(pos, -1);
+		const commentTag = cm.lezerHighlight.tags.comment;
+
+		for (; node; node = node.parent) {
+			const style = cm.lezerHighlight.getStyleTags(node);
+			if (style?.tags.some((tag) => tag.set.includes(commentTag))) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private getPathQuery(input: string): PathQuery {
@@ -325,11 +402,17 @@ class PathIntellisense {
 	}
 
 	private resolvePathForInput(input: string): ResolvedPath | null {
-		const fileUri = editorManager.activeFile?.uri;
+		const activeFile = editorManager.activeFile;
+		const fileUri = activeFile?.uri;
 		if (!fileUri) return null;
 
 		const absolutePath = "$HOME/";
-		const currentDirectory = this.removeFileNameAndExtension(fileUri);
+		const url = acode.require("url");
+		const currentDirectory =
+			activeFile.location ??
+			url?.dirname?.(fileUri) ??
+			this.removeFileNameAndExtension(fileUri);
+		if (!currentDirectory) return null;
 
 		if (input.startsWith(absolutePath)) {
 			const folderPath = input.substring(absolutePath.length);
@@ -347,9 +430,8 @@ class PathIntellisense {
 			input.startsWith("./") ||
 			input.includes("/")
 		) {
-			const relativeInput = input.startsWith("./") ? input.substring(1) : input;
 			return {
-				path: this.resolveRelativePath(currentDirectory, relativeInput),
+				path: this.resolveRelativePath(currentDirectory, input),
 				isNormal: false,
 			};
 		}
@@ -433,9 +515,18 @@ class PathIntellisense {
 	}
 
 	private resolveRelativePath(basePath: string, relativePath: string): string {
-		if (relativePath.startsWith("/")) {
-			return basePath + relativePath;
+		const url = acode.require("url");
+		if (url?.join) {
+			// A leading slash is how this plugin historically represents a path
+			// relative to the current file. Acode's Url.join handles `.` and `..`
+			// while preserving SAF/content URI roots and remote protocols.
+			const pathFromCurrentDirectory = relativePath.replace(/^\/+/, "");
+			const resolved = url.join(basePath, pathFromCurrentDirectory || ".");
+			if (resolved) return resolved;
 		}
+
+		// Compatibility fallback for older Acode builds without Url.join.
+		if (relativePath.startsWith("/")) return basePath + relativePath;
 
 		const basePathParts = basePath.split("::");
 		if (basePathParts.length !== 2) return basePath;

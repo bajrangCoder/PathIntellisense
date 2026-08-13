@@ -3,6 +3,7 @@
   "id": "bajrangcoder.path.intellize",
   "name": "PathIntellisense",
   "main": "main.js",
+  "version": "1.2.0",
   "readme": "readme.md",
   "changelogs": "changelogs.md",
   "repository": "https://github.com/bajrangCoder/PathIntellisense.git",
