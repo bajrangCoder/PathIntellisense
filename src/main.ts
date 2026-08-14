@@ -124,6 +124,10 @@ class PathIntellisense {
 			getCompletions: async (_editor, session, pos, _prefix, callback) => {
 				try {
 					const currentLine = session.getLine(pos.row);
+					if (this.isInAceComment(session, pos)) {
+						callback(null, []);
+						return;
+					}
 					const input = this.getCurrentInput(currentLine, pos.column);
 					const query = this.getPathQuery(input);
 					const resolved = this.resolvePathForInput(query.lookupInput);
@@ -362,6 +366,26 @@ class PathIntellisense {
 		}
 
 		return false;
+	}
+
+	private isInAceComment(
+		session: { getLine(row: number): string },
+		pos: { column: number },
+	): boolean {
+		const line = session.getLine(pos.row);
+		const before = line.substring(0, pos.column);
+		const trimmed = before.trimStart();
+		if (
+			trimmed.startsWith('//') ||
+			trimmed.startsWith('#') ||
+			trimmed.startsWith('--') ||
+			trimmed.startsWith("'")
+		) {
+			return true;
+		}
+		const open = before.lastIndexOf('/*');
+		const close = before.lastIndexOf('*/');
+		return open !== -1 && (close === -1 || open > close);
 	}
 
 	private getPathQuery(input: string): PathQuery {
